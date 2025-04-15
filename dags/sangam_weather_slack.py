@@ -92,7 +92,7 @@ with DAG(
     dag_id="sangam_weather_slack",
     default_args=default_args,
     description="상암동 날씨를 Slack으로 알림",
-    schedule_interval=timedelta(hours=1),
+    schedule_interval="5 * * * *",  # 매시간 05분
     start_date=datetime(2025, 4, 14),
     catchup=False,
 ) as dag:
