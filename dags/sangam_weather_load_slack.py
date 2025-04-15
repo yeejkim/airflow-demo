@@ -15,7 +15,7 @@ PTY_CODE_MAP = {
 }
 
 def get_base_datetime():
-    now = datetime.utcnow() + timedelta(hours=9)
+    now = datetime.utcnow() + timedelta(hours=9)  # KST
     base_time = now.replace(minute=0, second=0, microsecond=0)
     return base_time.strftime("%Y%m%d"), base_time.strftime("%H%M")
 
@@ -73,6 +73,17 @@ def parse_weather_data(**context):
 
     context['ti'].xcom_push(key='slack_message', value="\n".join(parsed_lines))
 
+def send_slack_notification(**context):
+    SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+    message = context['ti'].xcom_pull(key='slack_message')
+
+    slack_payload = {"text": message}
+    slack_response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
+    if slack_response.status_code != 200:
+        print("❌ 슬랙 알림 실패:", slack_response.text)
+    else:
+        print("✅ 슬랙 알림 전송 완료")
+
 def save_to_txt_file(**context):
     message = context['ti'].xcom_pull(key='slack_message')
     base_datetime = context['ti'].xcom_pull(key='base_datetime')
@@ -86,15 +97,7 @@ def save_to_txt_file(**context):
 
     print(f"✅ 파일 저장 완료: {filename}")
 
-def send_slack_notification(**context):
-    SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-    message = context['ti'].xcom_pull(key='slack_message')
-
-    slack_payload = {"text": message}
-    slack_response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
-    if slack_response.status_code != 200:
-        print("슬랙 알림 실패:", slack_response.text)
-
+# DAG 기본 설정
 default_args = {
     "owner": "airflow",
     "retries": 1,
@@ -102,10 +105,10 @@ default_args = {
 }
 
 with DAG(
-    dag_id="sangam_weather_load_slack",
+    dag_id="sangam_weather_slack",
     default_args=default_args,
     description="상암동 날씨를 Slack으로 알림",
-    schedule_interval="5 * * * *",
+    schedule_interval="7 * * * *",  # 매시간 07분
     start_date=datetime(2025, 4, 14),
     catchup=False,
 ) as dag:
