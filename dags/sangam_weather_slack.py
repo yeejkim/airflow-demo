@@ -15,8 +15,8 @@ PTY_CODE_MAP = {
 }
 
 def get_base_datetime():
-    now = datetime.utcnow() + timedelta(hours=9)
-    base_time = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+    now = datetime.utcnow() + timedelta(hours=9)  # KST 기준
+    base_time = now.replace(minute=0, second=0, microsecond=0)  # 현재 시각 기준 정시
     return base_time.strftime("%Y%m%d"), base_time.strftime("%H%M")
 
 def fetch_weather_data(**context):
@@ -92,7 +92,7 @@ with DAG(
     dag_id="sangam_weather_slack",
     default_args=default_args,
     description="상암동 날씨를 Slack으로 알림",
-    schedule_interval="5 * * * *",  # 매시간 05분
+    schedule_interval="7 * * * *",  # 매시간 07분
     start_date=datetime(2025, 4, 14),
     catchup=False,
 ) as dag:
