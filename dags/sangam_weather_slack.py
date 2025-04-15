@@ -53,47 +53,55 @@ def parse_weather_data(**context):
         print(response_text)
         return
 
-    parsed_lines = [f"📱 *{base_datetime} 기준 상암동 날씨 실황*"]
+    weather_data = {
+        "base_datetime": base_datetime,
+        "PTY": None,
+        "REH": None,
+        "T1H": None,
+        "WSD": None
+    }
 
     for item in items.findall("item"):
         category = item.findtext("category")
         value = item.findtext("obsrValue")
+        if category in weather_data:
+            weather_data[category] = value
 
-        if category == "PTY":
-            desc = PTY_CODE_MAP.get(value, "알 수 없음")
-            parsed_lines.append(f"☔️ 강수 형태: {desc} (코드: {value})")
-        elif category == "REH":
-            parsed_lines.append(f"💧 습도: {value}%")
-        elif category == "T1H":
-            parsed_lines.append(f"🌡️ 기온: {value}℃")
-        elif category == "WSD":
-            parsed_lines.append(f"🌬️ 풍속: {value} m/s")
-
-    context['ti'].xcom_push(key='slack_message', value="\n".join(parsed_lines))
-    print("✅ parse_weather_data 완료")
+    context['ti'].xcom_push(key='parsed_weather', value=weather_data)
+    print("✅ parse_weather_data 완료:", weather_data)
 
 def save_to_txt_file(**context):
-    message = context['ti'].xcom_pull(key='slack_message')
-    base_datetime = context['ti'].xcom_pull(key='base_datetime')
-
+    data = context['ti'].xcom_pull(key='parsed_weather')
     output_dir = "/opt/airflow/output"
     os.makedirs(output_dir, exist_ok=True)
 
-    filename = f"{output_dir}/weather_{base_datetime.replace(' ', '_')}.txt"
+    filename = f"{output_dir}/weather_{data['base_datetime'].replace(' ', '_')}.txt"
     with open(filename, "w", encoding="utf-8") as f:
-        f.write(message)
+        f.write(f"📱 *{data['base_datetime']} 기준 상암동 날씨 실황*\n")
+        f.write(f"☔️ 강수 형태: {PTY_CODE_MAP.get(data['PTY'], '알 수 없음')} (코드: {data['PTY']})\n")
+        f.write(f"💧 습도: {data['REH']}%\n")
+        f.write(f"🌡️ 기온: {data['T1H']}℃\n")
+        f.write(f"🌬️ 풍속: {data['WSD']} m/s\n")
 
     print(f"✅ 파일 저장 완료: {filename}")
 
 def send_slack_notification(**context):
     SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-    message = context['ti'].xcom_pull(key='slack_message')
+    data = context['ti'].xcom_pull(key='parsed_weather')
+
+    message = (
+        f"📱 *{data['base_datetime']} 기준 상암동 날씨 실황*\n"
+        f"☔️ 강수 형태: {PTY_CODE_MAP.get(data['PTY'], '알 수 없음')} (코드: {data['PTY']})\n"
+        f"💧 습도: {data['REH']}%\n"
+        f"🌡️ 기온: {data['T1H']}℃\n"
+        f"🌬️ 풍속: {data['WSD']} m/s"
+    )
 
     slack_payload = {"text": message}
-    slack_response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
+    response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
 
-    if slack_response.status_code != 200:
-        print("❌ 슬랙 알림 실패:", slack_response.text)
+    if response.status_code != 200:
+        print("❌ 슬랙 알림 실패:", response.text)
     else:
         print("✅ 슬랙 알림 전송 완료")
 
@@ -106,7 +114,7 @@ default_args = {
 with DAG(
     dag_id="sangam_weather_slack",
     default_args=default_args,
-    description="상암동 날씨를 Slack으로 알림",
+    description="상암동 날씨 데이터 저장 및 Slack 알림",
     schedule_interval=timedelta(hours=1),
     start_date=datetime(2025, 4, 14),
     catchup=False,
