@@ -105,9 +105,9 @@ default_args = {
 }
 
 with DAG(
-    dag_id="sangam_weather_slack",
+    dag_id="sangam_weather_load_slack",
     default_args=default_args,
-    description="상암동 날씨를 Slack으로 알림",
+    description="상암동 날씨 데이터 저장 & Slack 알림",
     schedule_interval="7 * * * *",  # 매시간 07분
     start_date=datetime(2025, 4, 14),
     catchup=False,
