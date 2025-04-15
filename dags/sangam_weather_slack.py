@@ -39,6 +39,7 @@ def fetch_weather_data(**context):
 
     context['ti'].xcom_push(key='weather_response', value=response.text)
     context['ti'].xcom_push(key='base_datetime', value=f"{base_date} {base_time}")
+    print("✅ fetch_weather_data 완료")
 
 def parse_weather_data(**context):
     response_text = context['ti'].xcom_pull(key='weather_response')
@@ -52,7 +53,7 @@ def parse_weather_data(**context):
         print(response_text)
         return
 
-    parsed_lines = [f"\ud83d\udcf1 *{base_datetime} 기준 상암동 날씨 실황*"]
+    parsed_lines = [f"📱 *{base_datetime} 기준 상암동 날씨 실황*"]
 
     for item in items.findall("item"):
         category = item.findtext("category")
@@ -60,15 +61,29 @@ def parse_weather_data(**context):
 
         if category == "PTY":
             desc = PTY_CODE_MAP.get(value, "알 수 없음")
-            parsed_lines.append(f"\u2614\ufe0f 강수 형태: {desc} (코드: {value})")
+            parsed_lines.append(f"☔️ 강수 형태: {desc} (코드: {value})")
         elif category == "REH":
-            parsed_lines.append(f"\ud83d\udca7 습도: {value}%")
+            parsed_lines.append(f"💧 습도: {value}%")
         elif category == "T1H":
-            parsed_lines.append(f"\ud83c\udf21\ufe0f 기온: {value}\u2103")
+            parsed_lines.append(f"🌡️ 기온: {value}℃")
         elif category == "WSD":
-            parsed_lines.append(f"\ud83c\udf2c\ufe0f 풍속: {value} m/s")
+            parsed_lines.append(f"🌬️ 풍속: {value} m/s")
 
     context['ti'].xcom_push(key='slack_message', value="\n".join(parsed_lines))
+    print("✅ parse_weather_data 완료")
+
+def save_to_txt_file(**context):
+    message = context['ti'].xcom_pull(key='slack_message')
+    base_datetime = context['ti'].xcom_pull(key='base_datetime')
+
+    output_dir = "/opt/airflow/output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    filename = f"{output_dir}/weather_{base_datetime.replace(' ', '_')}.txt"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(message)
+
+    print(f"✅ 파일 저장 완료: {filename}")
 
 def send_slack_notification(**context):
     SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
@@ -76,9 +91,11 @@ def send_slack_notification(**context):
 
     slack_payload = {"text": message}
     slack_response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
-    if slack_response.status_code != 200:
-        print("슬랙 알림 실패:", slack_response.text)
 
+    if slack_response.status_code != 200:
+        print("❌ 슬랙 알림 실패:", slack_response.text)
+    else:
+        print("✅ 슬랙 알림 전송 완료")
 
 default_args = {
     "owner": "airflow",
@@ -105,9 +122,15 @@ with DAG(
         python_callable=parse_weather_data,
     )
 
+    save_task = PythonOperator(
+        task_id="save_to_txt_file",
+        python_callable=save_to_txt_file,
+    )
+
     notify_task = PythonOperator(
         task_id="send_slack_notification",
         python_callable=send_slack_notification,
     )
 
-    fetch_task >> parse_task >> notify_task
+    fetch_task >> parse_task
+    parse_task >> [save_task, notify_task]
